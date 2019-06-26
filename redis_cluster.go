@@ -27,21 +27,21 @@ import (
 // @param client is the redis.Client object, configured and ready for use
 // @param sessionDuration is how long sessions will be valid for before Redis purges them
 // @param builder is how new session identifiers should be created. Use NewRandomSource or your own if you like
-func NewRedisStore(client *redis.Client, sessionDuration time.Duration, builder go_session_store.SessionIdGenerator) go_session_store.SessionStorer {
-	return &redisStore{
+func NewRedisClusterStore(client *redis.ClusterClient, sessionDuration time.Duration, builder go_session_store.SessionIdGenerator) go_session_store.SessionStorer {
+	return &redisClusterStore{
 		redisClient:     client,
 		sessionDuration: sessionDuration,
 		builder:         builder,
 	}
 }
 
-type redisStore struct {
-	redisClient     *redis.Client
+type redisClusterStore struct {
+	redisClient     *redis.ClusterClient
 	sessionDuration time.Duration
 	builder         go_session_store.SessionIdGenerator
 }
 
-func (r *redisStore) GenerateAndStore(ctx context.Context, userId string, metaData string) (session []byte, err error) {
+func (r *redisClusterStore) GenerateAndStore(ctx context.Context, userId string, metaData string) (session []byte, err error) {
 	// Serialize the userId and optional metadata
 	sd := redisSessionData{
 		UserId:   userId,
@@ -58,11 +58,11 @@ func (r *redisStore) GenerateAndStore(ctx context.Context, userId string, metaDa
 		return
 	}
 
-	return session, redisCheckAndSet(r.redisClient, redisKeyFromSession(session), string(sdJson), r.sessionDuration)
+	return session, redisClusterCheckAndSet(r.redisClient, redisKeyFromSession(session), string(sdJson), r.sessionDuration)
 }
 
 // Ensure that the key is not already in use and was not taken while we were checking (Check and Set)
-func redisCheckAndSet(client *redis.Client, key string, values string, sessionDuration time.Duration) (err error) {
+func redisClusterCheckAndSet(client *redis.ClusterClient, key string, values string, sessionDuration time.Duration) (err error) {
 	return client.Watch(func(tx *redis.Tx) error {
 		result := tx.Get(key)
 		if result.Err() != redis.Nil {
@@ -82,7 +82,7 @@ func redisCheckAndSet(client *redis.Client, key string, values string, sessionDu
 	}, key)
 }
 
-func (r *redisStore) Get(ctx context.Context, session []byte) (userId string, metaData string, err error) {
+func (r *redisClusterStore) Get(ctx context.Context, session []byte) (userId string, metaData string, err error) {
 	status := r.redisClient.Get(redisKeyFromSession(session))
 	if status.Err() == redis.Nil {
 		return "", "", nil
